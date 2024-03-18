@@ -1,0 +1,175 @@
+<!DOCTYPE aesl-source>
+<network>
+
+
+<!--list of global events-->
+
+
+<!--list of constants-->
+<constant value="450" name="EDGE"/>
+<constant value="1500" name="THRESHOLD"/>
+<constant value="300" name="SPEED"/>
+<constant value="3300" name="LEFT_TH"/>
+<constant value="3500" name="MID_TH"/>
+<constant value="2950" name="RIGHT_TH"/>
+<constant value="0" name="STOPPED"/>
+<constant value="1" name="BARCODE1"/>
+<constant value="2" name="BARCODE2"/>
+<constant value="3" name="BARCODE3"/>
+<constant value="4" name="TURN1"/>
+<constant value="5" name="TURN2"/>
+<constant value="6" name="LOST"/>
+
+
+<!--show keywords state-->
+<keywords flag="true"/>
+
+
+<!--node thymio-II-->
+<node nodeId="1" name="thymio-II"># Initialization
+var left = 0
+var middle = 0
+var right = 0
+
+var min = 0
+var max = 0
+var mean = 0
+
+var direction = 0
+var open_door = 0
+var rgb = 0
+var state = STOPPED
+
+# When forward button pressed, go forward
+onevent button.forward
+	motor.left.target = SPEED
+	motor.right.target = SPEED
+	state = BARCODE1
+	call leds.circle(32,0,0,0,0,0,0,0)	
+
+# When back button pressed, stop robot
+onevent button.backward
+	motor.left.target = 0
+	motor.right.target = 0
+	state = STOPPED
+	call leds.circle(0,0,0,0,0,0,0,0)	
+	
+onevent prox
+	left = prox.horizontal[1]
+	middle = prox.horizontal[2]
+	right = prox.horizontal[3]
+	call math.stat( prox.ground.delta[0:1], min, max, mean)
+	
+	#Barcode 1 detection 
+	if prox.horizontal[0] > THRESHOLD and state == BARCODE1 then
+		motor.left.target = 0
+		motor.right.target = 0
+		callsub first_barcode
+		 	
+	# Go forward, and search for line to line up with barcode 2
+	elseif state == BARCODE2 then
+		motor.left.target = SPEED
+		motor.right.target = SPEED
+		timer.period[0] = 0
+		call leds.circle(32,32,0,0,0,0,0,0)
+		
+		# if moving left and sensing black line
+   	if prox.ground.delta[0] &lt; EDGE then
+     		motor.left.target = 0 # move left
+     		motor.right.target = SPEED - 100
+		# if moving right and sensing black line
+   	elseif prox.ground.delta[1] &lt; EDGE then
+    			motor.left.target = SPEED - 100 # move right
+     		motor.right.target = 0
+    	end
+    	
+   	if prox.horizontal[0] > THRESHOLD then
+     	callsub second_barcode
+    	end
+    	  	
+  # Barcode 3 Detection
+	elseif state == BARCODE3 then
+		motor.left.target = SPEED
+		motor.right.target = SPEED
+		call leds.circle(32,32,32,0,0,0,0,0)
+		timer.period[0] = 0
+		
+		# if moving left and sensing black line
+   	if prox.ground.delta[0] &lt; EDGE then
+     		motor.left.target = 0 # move left
+     		motor.right.target = SPEED - 100
+		# if moving right and sensing black line
+   	elseif prox.ground.delta[1] &lt; EDGE then
+    			motor.left.target = SPEED - 100 # move right
+     		motor.right.target = 0
+    	end
+    	
+    	if prox.horizontal[0] > THRESHOLD then
+     	callsub third_barcode
+    	end
+	end	
+
+onevent timer0 
+	if state == TURN1 then
+		state = BARCODE2
+	elseif state == TURN2 then
+			state = BARCODE3	
+	end						
+	
+sub first_barcode
+	state = TURN1
+	if left > LEFT_TH then
+		timer.period[0] = 540
+		motor.left.target = -SPEED
+		motor.right.target = SPEED
+		direction = 1 #first turn is left
+		
+	elseif right > RIGHT_TH then
+		timer.period[0] = 540
+		motor.left.target = SPEED
+		motor.right.target = -SPEED
+		direction = 2 #first turn is right
+	end
+	
+sub second_barcode
+	state = TURN2	
+	# scanning second barcode
+	if left > LEFT_TH then
+		open_door = 1 #left
+		call leds.circle(32,32,32,32,32,32,32,32)
+	elseif middle > MID_TH then
+		# IS A DEAD END (RETURN TO THIS LATER!!)
+		call leds.circle(32,0,0,0,32,0,0,0)
+		state = LOST 
+	elseif right > RIGHT_TH then
+		open_door = 2 #right
+		call leds.circle(32,0,32,0,32,0,32,0)
+	end
+	
+	# Turn after scanning barcode
+	#if first barcode was left, go right
+	if open_door >= 1 and direction == 1 then
+		timer.period[0] = 540
+		motor.left.target = SPEED
+		motor.right.target = -SPEED
+	#if first barcode wasn't left, go left
+	elseif open_door >= 1 and direction == 2 then
+		timer.period[0] = 540
+		motor.left.target = -SPEED
+		motor.right.target = SPEED
+	end
+	
+	
+sub third_barcode
+	# scanning third barcode
+	if left > LEFT_TH then
+		rgb = 1 #red
+	elseif middle > MID_TH then
+		rgb = 2 #green
+	elseif right > RIGHT_TH then
+		rgb = 3 #blue
+	end
+</node>
+
+
+</network>
